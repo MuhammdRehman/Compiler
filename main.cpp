@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 using namespace std;
 
 #include <vector>
@@ -385,17 +387,19 @@ vector<Token> tokenize_function(const string& programcode)
 
 void print_all_tokens(const vector<Token>& tokens) 
 {
+    cout << "[";
     for (auto& t : tokens) {
-        cout << "[" << fromTokenTypeToStringGo(t.type);
-        if (!t.value.empty() && t.type == TokenType::T_IDENTIFIER)
-            cout << ": " << t.value;
+        cout << fromTokenTypeToStringGo(t.type);
+        if (!t.value.empty() && (t.type == TokenType::T_STRINGLIT || t.type == TokenType::T_IDENTIFIER))
+            cout << "(\"" << t.value<<"\")";
         else if (!t.value.empty() && (t.type == TokenType::T_INTLIT ||
             t.type == TokenType::T_FLOATLIT ||
-            t.type == TokenType::T_STRINGLIT ||
             t.type == TokenType::T_BOOLLIT))
             cout << "(" << t.value << ")";
-        cout << "]";
+        
+        cout << ",";
     }
+    cout << "]";
     cout << endl;
 }
 
@@ -404,11 +408,11 @@ void print_all_tokens(const vector<Token>& tokens)
 
 int main() 
 {
-    string programcode = R"(fn int my_fn(int x, float y) {
-        string my_str = "hmm";
-        bool my_bool = x == 40;
-        return x;
-    })";
+    ifstream infile("TestFile.txt");   
+    stringstream buffer;
+    buffer << infile.rdbuf();     // Read whole file into buffer
+
+    string programcode = buffer.str(); 
     vector <Token> ts = tokenize_function(programcode);
 
     print_all_tokens(ts);
