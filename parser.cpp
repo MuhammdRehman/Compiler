@@ -66,6 +66,15 @@ struct FloatLiteral : public Expr {
         pad(indent); cout << "FloatLiteral: " << val << "\n";
     }
 };
+struct StringLiteral : public Expr {
+    string val;
+    StringLiteral(string v): val(move(v)) {}
+    void print(int indent=0) const override {
+        pad(indent); cout << "StringLiteral: \"" << val << "\"\n";
+    }
+};
+
+
 
 int ParserAlgo(vector<Token> ts){
     cout<<"Parser is under Construction. Once completed then it's code will be written here.";
