@@ -74,6 +74,16 @@ struct StringLiteral : public Expr {
     }
 };
 
+struct BoolLiteral : public Expr {
+    string val;
+    BoolLiteral(string v): val(move(v)) {}
+    void print(int indent=0) const override {
+        pad(indent); cout << "BoolLiteral: " << val << "\n";
+    }
+};
+
+
+
 
 
 int ParserAlgo(vector<Token> ts){
