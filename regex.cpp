@@ -126,14 +126,13 @@ void print_all_tokens(const vector<Token>& tokens) {
     cout << endl;
 }
 
-int main() {
-    ifstream infile("TestFile.txt");
+vector<Token>  LexerAlgo(string& file) {
+    ifstream infile(file);
     stringstream buffer;
     buffer << infile.rdbuf();
     string programcode = buffer.str();
 
     vector<Token> ts = tokenize_regex(programcode);
     print_all_tokens(ts);
-
-    return 0;
+    return ts;
 }

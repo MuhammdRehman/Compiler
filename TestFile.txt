@@ -1,14 +1,7 @@
-fn int my_fn(int x, float y) {
+int my_fn(int x, float y) {
     string my_str = "hmm";
     bool my_bool = x == 40;
     return x;
 }
 
-fn int my_fn(int x, float y) {
-    for(int i = 0; i<10;i++){
-        cout << "Hellow";
-    }
-    string my_str = "hmm";
-    bool my_bool = x == 40;
-    return x;
-}
+     
