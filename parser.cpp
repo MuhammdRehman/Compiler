@@ -372,5 +372,10 @@ public:
 
 int ParserAlgo(vector<Token> ts) {
     
+        Parser parser(ts);
+        Program prog = parser.parse_full_program();
+        cout << "----- AST -----\n";
+        prog.print(0);
+   
     return 0;
 }
