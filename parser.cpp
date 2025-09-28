@@ -366,6 +366,164 @@ public:
         return params;
     }
 
+   shared_ptr<BlockStmt> parse_block_dec() {
+        
+        take_func(TokenType::T_BRACEL, ParseError::FailedToFindToken, "expected '{' to start block");
+        vector<StmtPtr> stmts;
+        
+        while (!check(TokenType::T_BRACER) && !reach_end()) 
+        {
+            stmts.push_back(parseStatement());
+        }
+        
+        take_func(TokenType::T_BRACER, ParseError::FailedToFindToken, "expected '}' to close block");
+        
+        return make_shared<BlockStmt>(move(stmts));
+    }
+
+    StmtPtr parseStatement() 
+    {
+        if (isTypeToken(getter_now())) return parse_variable_dec();
+        if (check(TokenType::T_RETURN)) return parse_return_dec();
+        if (check(TokenType::T_BRACEL)) return parse_block_dec();
+        
+        if (check(TokenType::T_IDENTIFIER)) 
+        {
+            if (pos + 1 < tokens.size() && tokens[pos+1].type == TokenType::T_ASSIGN) 
+            {
+                return parseAssign();
+            }
+            else 
+            {
+                auto e = parseExpression();
+                take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after expression");
+                return make_shared<ExprStmt>(e);
+            }
+        }
+        throw ParseException(ParseError::UnexpectedToken, getter_now(), "unexpected token at start of statement");
+    }
+
+    StmtPtr parse_variable_dec() 
+    {
+        Token t = next_get();
+
+        string typeName = tokenTypeToTypeName(t);
+        
+        const Token &idTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected variable name");
+        
+        take_func(TokenType::T_ASSIGN, ParseError::FailedToFindToken, "expected '=' in variable declaration");
+        
+        ExprPtr init = parseExpression();
+        
+        take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after declaration");
+        
+        return make_shared<VarDeclStmt>(typeName, idTok.value, init);
+    }
+
+    StmtPtr parseAssign() 
+    {
+        const Token &idTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected identifier for assignment");
+    
+        take_func(TokenType::T_ASSIGN, ParseError::FailedToFindToken, "expected '=' in assignment");
+    
+        ExprPtr val = parseExpression();
+    
+        take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after assignment");
+    
+        return make_shared<AssignStmt>(idTok.value, val);
+    }
+
+    StmtPtr parse_return_dec() 
+    {
+        next_get();
+    
+        ExprPtr val = parseExpression();
+    
+        take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after return");
+    
+        return make_shared<ReturnStmt>(val);
+    }
+
+
+    ExprPtr parseExpression() 
+    {
+        return parseEquality();
+    }
+
+    ExprPtr parseEquality() 
+    {
+        ExprPtr left = parsePrimaryOrCall();
+    
+        while (check(TokenType::T_EQUALSOP) || check(TokenType::T_NOTEQUAL)
+               || check(TokenType::T_LESS) || check(TokenType::T_LESSEQ)
+               || check(TokenType::T_GREATER) || check(TokenType::T_GREATEREQ)
+               || check(TokenType::T_PLUS) || check(TokenType::T_MINUS)
+               || check(TokenType::T_MULT) || check(TokenType::T_DIV)
+               || check(TokenType::T_MOD)) {
+            Token op = next_get();
+            ExprPtr right = parsePrimaryOrCall();
+            left = make_shared<BinaryExpr>(left, fromTokenTypeToStringGo(op.type), right);
+        }
+        return left;
+    }
+
+    /* Primary expressions and function calls:
+       Primary → IDENT | INTLIT | FLOATLIT | STRINGLIT | BOOLLIT | '(' Expr ')'
+       if IDENT followed by '(' → function call
+    */
+    ExprPtr parsePrimaryOrCall() {
+        if (check(TokenType::T_INTLIT)) {
+            Token t = next_get();
+            return make_shared<IntLiteral>(t.value);
+        }
+        if (check(TokenType::T_FLOATLIT)) {
+            Token t = next_get();
+            return make_shared<FloatLiteral>(t.value);
+        }
+        if (check(TokenType::T_STRINGLIT)) {
+            Token t = next_get();
+            return make_shared<StringLiteral>(t.value);
+        }
+        if (check(TokenType::T_BOOLLIT)) {
+            Token t = next_get();
+            return make_shared<BoolLiteral>(t.value);
+        }
+        if (check(TokenType::T_IDENTIFIER)) {
+            Token id = next_get();
+            // function call?
+            if (check(TokenType::T_PARENL)) {
+                next_get(); // take_func '('
+                vector<ExprPtr> args;
+                if (!check(TokenType::T_PARENR)) {
+                    args = parseArgList();
+                }
+                take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after call args");
+                return make_shared<CallExpr>(make_shared<IdentifierExpr>(id.value), args);
+            } else {
+                return make_shared<IdentifierExpr>(id.value);
+            }
+        }
+        if (check(TokenType::T_PARENL)) {
+            next_get(); // '('
+            ExprPtr e = parseExpression();
+            take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')'");
+            return e;
+        }
+
+        // no primary found
+        throw ParseException(ParseError::ExpectedExpr, getter_now(), "expected expression");
+    }
+
+    vector<ExprPtr> parseArgList() {
+        vector<ExprPtr> args;
+        while (true) {
+            args.push_back(parseExpression());
+            if (check(TokenType::T_COMMA)) { next_get(); continue; }
+            break;
+        }
+        return args;
+    }
+
     
 };
 
