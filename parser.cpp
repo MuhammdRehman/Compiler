@@ -310,11 +310,47 @@ public:
         throw ParseException(err, getter_now(), msg);
     }
 
-}
+};
 
 
 int ParserAlgo(vector<Token> ts) 
 {
-    
+    try {
+        Parser parser(ts);   
+        Program prog = parser.parse_full_program();  
+
+        cout << "----- AST -----\n";
+        prog.print(0);
+    } 
+    catch (const ParseException &e) 
+    {
+        cerr << "Parse error: ";
+        switch (e.err) {
+            case ParseError::UnexpectedEOF: cerr << "UnexpectedEOF"; break;
+            case ParseError::FailedToFindToken: cerr << "FailedToFindToken"; break;
+            case ParseError::ExpectedTypeToken: cerr << "ExpectedTypeToken"; break;
+            case ParseError::ExpectedIdentifier: cerr << "ExpectedIdentifier"; break;
+            case ParseError::UnexpectedToken: cerr << "UnexpectedToken"; break;
+            case ParseError::ExpectedFloatLit: cerr << "ExpectedFloatLit"; break;
+            case ParseError::ExpectedIntLit: cerr << "ExpectedIntLit"; break;
+            case ParseError::ExpectedStringLit: cerr << "ExpectedStringLit"; break;
+            case ParseError::ExpectedBoolLit: cerr << "ExpectedBoolLit"; break;
+            case ParseError::ExpectedExpr: cerr << "ExpectedExpr"; break;
+            default: cerr << "Unknown"; break;
+        }
+
+        cerr << ". Token: " << fromTokenTypeToStringGo(e.token.type);
+        if (!e.token.value.empty()) cerr << " ('" << e.token.value << "')";
+        if (strlen(e.what())>0) cerr << ". Msg: " << e.what();
+        cerr << "\n";
+        return 2;
+    } 
+    catch (const exception &ex) 
+    {
+        cerr << "Error: " << ex.what() << "\n";
+        return 1;
+    }
+
     return 0;
+
 }
