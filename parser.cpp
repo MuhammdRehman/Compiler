@@ -25,7 +25,6 @@ enum class ParseError {
     ExpectedExpr
 };
 
-// ParseException carries an error 
 struct ParseException : public runtime_error {
     ParseError err;
     Token token;
@@ -33,9 +32,6 @@ struct ParseException : public runtime_error {
         : runtime_error(msg), err(e), token(t) {}
 };
 
-/* -------------------------
-   AST node definitions
-   ------------------------- */
 struct ASTNode {
     virtual ~ASTNode() = default;
     virtual void print(int indent = 0) const = 0;
@@ -218,7 +214,7 @@ public:
             if (isTypeToken(getter_now()))
             {
             
-                // prog.funcs.push_back(parseFunctionDecl());
+                prog.funcs.push_back(parseFunctionDecl());
             } 
             else if (getter_now().type == TokenType::T_COMMENT) 
             {
@@ -310,11 +306,71 @@ public:
         throw ParseException(err, getter_now(), msg);
     }
 
-}
+    static bool isTypeToken(const Token& t) 
+    {
+        return t.type == TokenType::T_INT || t.type == TokenType::T_FLOAT || t.type == TokenType::T_STRING || t.type == TokenType::T_BOOL;
+    }
+
+    string tokenTypeToTypeName(const Token& t)
+     {
+        switch (t.type) {
+            case TokenType::T_INT: return "int";
+            case TokenType::T_FLOAT: return "float";
+            case TokenType::T_STRING: return "string";
+            case TokenType::T_BOOL: return "bool";
+            default: return fromTokenTypeToStringGo(t.type);
+        }
+    }
+
+    shared_ptr<FunctionDecl> parseFunctionDecl() 
+    {
+        const Token &typeTok = next_get();
+        string returnType = tokenTypeToTypeName(typeTok);
+
+        const Token &nameTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected function name");
+        string fname = nameTok.value;
+
+        take_func(TokenType::T_PARENL, ParseError::FailedToFindToken, "expected '(' after function name");
+
+        vector<Param> params;
+        if (!check(TokenType::T_PARENR)) 
+        {
+            params = parseParamList();
+        }
+
+        take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after parameters");
+
+        auto body = parse_block_dec();
+
+        return make_shared<FunctionDecl>(returnType, fname, params, body);
+    }
+
+    vector<Param> parseParamList()
+    {
+        vector<Param> params;
+        while (true) 
+        {
+            if (!isTypeToken(getter_now())) throw ParseException(ParseError::ExpectedTypeToken, getter_now(), "expected parameter type");
+
+            Token tt = next_get();
+
+            string type_name_get_func = tokenTypeToTypeName(tt);
+            
+            const Token &idTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected parameter identifier");
+            
+            params.push_back(Param{type_name_get_func, idTok.value});
+            
+            if (check(TokenType::T_COMMA)) { next_get(); continue; }
+            break;
+        }
+        return params;
+    }
+
+    
+};
 
 
-int ParserAlgo(vector<Token> ts) 
-{
+int ParserAlgo(vector<Token> ts) {
     
     return 0;
 }
