@@ -216,17 +216,22 @@ struct Program : public ASTNode {
 };
 
 /* -------------------------
-   ScopeAnalyzer class using spaghetti stack (vector of maps)
+ spaghetti stack 
    ------------------------- */
 class ScopeAnalyzer {
-    map<string, bool> functions; // Global functions map
-    vector<map<string, bool>> scopeStack; // Spaghetti stack for locals/params
+    map<string, bool> functions; 
+    vector<map<string, bool>> scopeStack; 
 
-    void checkVarDefined(const string& name, const vector<map<string, bool>>& stack) const {
+
+
+    void checkVarDefined(const string& name, const vector<map<string, bool>>& stack) const 
+    {
         for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+    
             if (it->count(name)) return;
         }
-        throw ScopeException(ScopeError::UndeclaredVariableAccessed, "Undeclared variable accessed: " + name);
+    
+        throw ScopeException(ScopeError::UndeclaredVariableAccessed, "not ddeclared variable has accessed: " + name);
     }
 
     void analyzeExpr(const ExprPtr& expr, const vector<map<string, bool>>& stack);
@@ -244,10 +249,9 @@ class ScopeAnalyzer {
         scopeStack.clear();
         scopeStack.push_back({}); // Function's local scope
 
-        // Add parameters to the function scope
         for (const auto& p : func->params) {
             if (scopeStack.back().count(p.ident)) {
-                throw ScopeException(ScopeError::VariableRedefinition, "Parameter redefinition: " + p.ident);
+                throw ScopeException(ScopeError::VariableRedefinition, "params redefinition: " + p.ident);
             }
             scopeStack.back()[p.ident] = true;
         }
@@ -258,10 +262,9 @@ class ScopeAnalyzer {
 
 public:
     void analyze(const Program& prog) {
-        // Collect functions and check for redefinitions
         for (const auto& f : prog.funcs) {
             if (functions.count(f->name)) {
-                throw ScopeException(ScopeError::FunctionPrototypeRedefinition, "Function redefinition: " + f->name);
+                throw ScopeException(ScopeError::FunctionPrototypeRedefinition, "func redefinition: " + f->name);
             }
             functions[f->name] = true;
         }
@@ -281,9 +284,9 @@ void ScopeAnalyzer::analyzeExpr(const ExprPtr& expr, const vector<map<string, bo
     } else if (auto call = dynamic_pointer_cast<CallExpr>(expr)) {
         if (auto id = dynamic_pointer_cast<IdentifierExpr>(call->callee)) {
             if (functions.find(id->name) == functions.end()) {
-                throw ScopeException(ScopeError::UndefinedFunctionCalled, "Undefined function called: " + id->name);
+                throw ScopeException(ScopeError::UndefinedFunctionCalled, "undefined function called: " + id->name);
             }
-        } // Assume callee is identifier; in full impl, handle other cases
+        } // Assume callee is identifier; in full impl
         for (const auto& a : call->args) {
             analyzeExpr(a, stack);
         }
@@ -570,6 +573,7 @@ public:
         ExprPtr left = parse_compare();
 
         while (check(TokenType::T_EQUALSOP) || check(TokenType::T_NOTEQUAL)) {
+            
             Token op = next_get();
 
             ExprPtr right = parse_compare();
@@ -633,33 +637,45 @@ public:
        Primary → IDENT | INTLIT | FLOATLIT | STRINGLIT | BOOLLIT | '(' Expr ')'
        if IDENT followed by '(' → function call
     */
-    ExprPtr parsePrimaryOrCall() {
-        if (check(TokenType::T_INTLIT)) {
+    ExprPtr parsePrimaryOrCall() 
+    {
+        if (check(TokenType::T_INTLIT)) 
+        {
             Token t = next_get();
+
             return make_shared<IntLiteral>(t.value);
         }
         if (check(TokenType::T_FLOATLIT)) {
             Token t = next_get();
+            
             return make_shared<FloatLiteral>(t.value);
         }
         if (check(TokenType::T_STRINGLIT)) {
             Token t = next_get();
+            
             return make_shared<StringLiteral>(t.value);
         }
         if (check(TokenType::T_BOOLLIT)) {
             Token t = next_get();
+            
             return make_shared<BoolLiteral>(t.value);
         }
         if (check(TokenType::T_IDENTIFIER)) {
             Token id = next_get();
             // function call?
+            
             if (check(TokenType::T_PARENL)) {
-                next_get(); // take_func '('
+            
+                next_get(); //  '('
+            
                 vector<ExprPtr> args;
                 if (!check(TokenType::T_PARENR)) {
+            
                     args = parseArgList();
                 }
+            
                 take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after call args");
+            
                 return make_shared<CallExpr>(make_shared<IdentifierExpr>(id.value), args);
             } else {
                 return make_shared<IdentifierExpr>(id.value);
@@ -699,10 +715,9 @@ int ParserAlgo(vector<Token> ts)
         cout << "----- AST -----\n";
         prog.print(0);
 
-        // Perform scope analysis
         ScopeAnalyzer analyzer;
         analyzer.analyze(prog);
-        cout << "Scope analysis passed successfully.\n";
+        cout << "Scope analysis passed done no error was there......\n";
     } 
     catch (const ParseException &e) 
     {
@@ -729,7 +744,7 @@ int ParserAlgo(vector<Token> ts)
     } 
     catch (const ScopeException &e) 
     {
-        cerr << "Scope error: ";
+        cerr << "scopee error: ";
         switch (e.err) {
             case ScopeError::UndeclaredVariableAccessed: cerr << "UndeclaredVariableAccessed"; break;
             case ScopeError::UndefinedFunctionCalled: cerr << "UndefinedFunctionCalled"; break;
