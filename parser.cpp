@@ -7,6 +7,7 @@
 #include <regex>
 #include <cstring>
 #include "tokens.h"   
+#include <memory> // for shared_ptr
 using namespace std;
 
 /* -------------------------
@@ -30,6 +31,22 @@ struct ParseException : public runtime_error {
     Token token;
     ParseException(ParseError e, const Token& t, const string &msg = "")
         : runtime_error(msg), err(e), token(t) {}
+};
+
+/* -------------------------
+   ScopeError As defined in assignment
+   ------------------------- */
+enum class ScopeError {
+    UndeclaredVariableAccessed,
+    UndefinedFunctionCalled,
+    VariableRedefinition,
+    FunctionPrototypeRedefinition,
+};
+
+struct ScopeException : public runtime_error {
+    ScopeError err;
+    string msg;
+    ScopeException(ScopeError e, string m) : runtime_error(m), err(e), msg(m) {}
 };
 
 struct ASTNode {
@@ -199,6 +216,110 @@ struct Program : public ASTNode {
 };
 
 /* -------------------------
+   ScopeAnalyzer class using spaghetti stack (vector of maps)
+   ------------------------- */
+class ScopeAnalyzer {
+    map<string, bool> functions; // Global functions map
+    vector<map<string, bool>> scopeStack; // Spaghetti stack for locals/params
+
+    void checkVarDefined(const string& name, const vector<map<string, bool>>& stack) const {
+        for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+            if (it->count(name)) return;
+        }
+        throw ScopeException(ScopeError::UndeclaredVariableAccessed, "Undeclared variable accessed: " + name);
+    }
+
+    void analyzeExpr(const ExprPtr& expr, const vector<map<string, bool>>& stack);
+    void analyzeStmt(const StmtPtr& stmt, vector<map<string, bool>>& stack);
+
+    void analyzeBlock(const shared_ptr<BlockStmt>& block, vector<map<string, bool>>& stack) {
+        stack.push_back({});
+        for (const auto& s : block->stmts) {
+            analyzeStmt(s, stack);
+        }
+        stack.pop_back();
+    }
+
+    void analyzeFunction(const shared_ptr<FunctionDecl>& func) {
+        scopeStack.clear();
+        scopeStack.push_back({}); // Function's local scope
+
+        // Add parameters to the function scope
+        for (const auto& p : func->params) {
+            if (scopeStack.back().count(p.ident)) {
+                throw ScopeException(ScopeError::VariableRedefinition, "Parameter redefinition: " + p.ident);
+            }
+            scopeStack.back()[p.ident] = true;
+        }
+
+        // Analyze body
+        analyzeBlock(func->body, scopeStack);
+    }
+
+public:
+    void analyze(const Program& prog) {
+        // Collect functions and check for redefinitions
+        for (const auto& f : prog.funcs) {
+            if (functions.count(f->name)) {
+                throw ScopeException(ScopeError::FunctionPrototypeRedefinition, "Function redefinition: " + f->name);
+            }
+            functions[f->name] = true;
+        }
+
+        for (const auto& f : prog.funcs) {
+            analyzeFunction(f);
+        }
+    }
+};
+
+void ScopeAnalyzer::analyzeExpr(const ExprPtr& expr, const vector<map<string, bool>>& stack) {
+    if (auto id = dynamic_pointer_cast<IdentifierExpr>(expr)) {
+        checkVarDefined(id->name, stack);
+    } else if (auto bin = dynamic_pointer_cast<BinaryExpr>(expr)) {
+        analyzeExpr(bin->left, stack);
+        analyzeExpr(bin->right, stack);
+    } else if (auto call = dynamic_pointer_cast<CallExpr>(expr)) {
+        if (auto id = dynamic_pointer_cast<IdentifierExpr>(call->callee)) {
+            if (functions.find(id->name) == functions.end()) {
+                throw ScopeException(ScopeError::UndefinedFunctionCalled, "Undefined function called: " + id->name);
+            }
+        } // Assume callee is identifier; in full impl, handle other cases
+        for (const auto& a : call->args) {
+            analyzeExpr(a, stack);
+        }
+    } else if (dynamic_pointer_cast<IntLiteral>(expr)) {
+        // OK
+    } else if (dynamic_pointer_cast<FloatLiteral>(expr)) {
+        // OK
+    } else if (dynamic_pointer_cast<StringLiteral>(expr)) {
+        // OK
+    } else if (dynamic_pointer_cast<BoolLiteral>(expr)) {
+        // OK
+    } 
+}
+
+void ScopeAnalyzer::analyzeStmt(const StmtPtr& stmt, vector<map<string, bool>>& stack) {
+    if (auto block = dynamic_pointer_cast<BlockStmt>(stmt)) {
+        analyzeBlock(block, stack);
+    } else if (auto vdecl = dynamic_pointer_cast<VarDeclStmt>(stmt)) {
+        if (stack.back().count(vdecl->ident)) {
+            throw ScopeException(ScopeError::VariableRedefinition, "Variable redefinition: " + vdecl->ident);
+        }
+        stack.back()[vdecl->ident] = true;
+        analyzeExpr(vdecl->init, stack);
+    } else if (auto assign = dynamic_pointer_cast<AssignStmt>(stmt)) {
+        checkVarDefined(assign->ident, stack);
+        analyzeExpr(assign->value, stack);
+    } else if (auto ret = dynamic_pointer_cast<ReturnStmt>(stmt)) {
+        if (ret->value) {
+            analyzeExpr(ret->value, stack);
+        }
+    } else if (auto estmt = dynamic_pointer_cast<ExprStmt>(stmt)) {
+        analyzeExpr(estmt->expr, stack);
+    } 
+}
+
+/* -------------------------
    parser here
    ------------------------- */
 class Parser {
@@ -324,36 +445,31 @@ public:
 
     shared_ptr<FunctionDecl> parseFunctionDecl() 
     {
-        const Token &typeTok = next_get();
-        string returnType = tokenTypeToTypeName(typeTok);
-
-        const Token &nameTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected function name");
-        string fname = nameTok.value;
-
+        Token typeTok = next_get();
+        string retType = tokenTypeToTypeName(typeTok);
+        
+        const Token &idTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected function name");
+        
         take_func(TokenType::T_PARENL, ParseError::FailedToFindToken, "expected '(' after function name");
-
-        vector<Param> params;
-        if (!check(TokenType::T_PARENR)) 
-        {
-            params = parseParamList();
-        }
-
+        
+        vector<Param> params = parseParams();
+        
         take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after parameters");
-
-        auto body = parse_block_dec();
-
-        return make_shared<FunctionDecl>(returnType, fname, params, body);
+        
+        shared_ptr<BlockStmt> body = parse_block_dec();
+        
+        return make_shared<FunctionDecl>(retType, idTok.value, params, body);
     }
 
-    vector<Param> parseParamList()
-    {
+    vector<Param> parseParams() {
         vector<Param> params;
-        while (true) 
-        {
-            if (!isTypeToken(getter_now())) throw ParseException(ParseError::ExpectedTypeToken, getter_now(), "expected parameter type");
+        if (check(TokenType::T_PARENR)) return params; // empty
 
+        while (true) {
             Token tt = next_get();
-
+            if (!isTypeToken(tt)) {
+                throw ParseException(ParseError::ExpectedTypeToken, tt, "expected parameter type");
+            }
             string type_name_get_func = tokenTypeToTypeName(tt);
             
             const Token &idTok = take_func(TokenType::T_IDENTIFIER, ParseError::ExpectedIdentifier, "expected parameter identifier");
@@ -450,20 +566,66 @@ public:
         return parseEquality();
     }
 
-    ExprPtr parseEquality() 
-    {
-        ExprPtr left = parsePrimaryOrCall();
-    
-        while (check(TokenType::T_EQUALSOP) || check(TokenType::T_NOTEQUAL)
-               || check(TokenType::T_LESS) || check(TokenType::T_LESSEQ)
-               || check(TokenType::T_GREATER) || check(TokenType::T_GREATEREQ)
-               || check(TokenType::T_PLUS) || check(TokenType::T_MINUS)
-               || check(TokenType::T_MULT) || check(TokenType::T_DIV)
-               || check(TokenType::T_MOD)) {
+    ExprPtr parseEquality() {
+        ExprPtr left = parse_compare();
+
+        while (check(TokenType::T_EQUALSOP) || check(TokenType::T_NOTEQUAL)) {
             Token op = next_get();
-            ExprPtr right = parsePrimaryOrCall();
+
+            ExprPtr right = parse_compare();
+            
             left = make_shared<BinaryExpr>(left, fromTokenTypeToStringGo(op.type), right);
         }
+
+        return left;
+    }
+
+    ExprPtr parse_compare() {
+        
+        ExprPtr left = parse_term();
+
+        while (check(TokenType::T_LESS) || check(TokenType::T_LESSEQ) ||
+            check(TokenType::T_GREATER) || check(TokenType::T_GREATEREQ)) {
+        
+                Token op = next_get();
+        
+                ExprPtr right = parse_term();
+        
+                left = make_shared<BinaryExpr>(left, fromTokenTypeToStringGo(op.type), right);
+        }
+
+        return left;
+    }
+
+    ExprPtr parse_term() {
+        
+        ExprPtr left = parse_factor();
+
+        while (check(TokenType::T_PLUS) || check(TokenType::T_MINUS)) {
+        
+            Token op = next_get();
+        
+            ExprPtr right = parse_factor();
+        
+            left = make_shared<BinaryExpr>(left, fromTokenTypeToStringGo(op.type), right);
+        }
+
+        return left;
+    }
+
+    ExprPtr parse_factor() {
+        
+        ExprPtr left = parsePrimaryOrCall();
+
+        while (check(TokenType::T_MULT) || check(TokenType::T_DIV)) {
+        
+            Token op = next_get();
+        
+            ExprPtr right = parsePrimaryOrCall();
+        
+            left = make_shared<BinaryExpr>(left, fromTokenTypeToStringGo(op.type), right);
+        }
+
         return left;
     }
 
@@ -536,6 +698,11 @@ int ParserAlgo(vector<Token> ts)
 
         cout << "----- AST -----\n";
         prog.print(0);
+
+        // Perform scope analysis
+        ScopeAnalyzer analyzer;
+        analyzer.analyze(prog);
+        cout << "Scope analysis passed successfully.\n";
     } 
     catch (const ParseException &e) 
     {
@@ -559,6 +726,18 @@ int ParserAlgo(vector<Token> ts)
         if (strlen(e.what())>0) cerr << ". Msg: " << e.what();
         cerr << "\n";
         return 2;
+    } 
+    catch (const ScopeException &e) 
+    {
+        cerr << "Scope error: ";
+        switch (e.err) {
+            case ScopeError::UndeclaredVariableAccessed: cerr << "UndeclaredVariableAccessed"; break;
+            case ScopeError::UndefinedFunctionCalled: cerr << "UndefinedFunctionCalled"; break;
+            case ScopeError::VariableRedefinition: cerr << "VariableRedefinition"; break;
+            case ScopeError::FunctionPrototypeRedefinition: cerr << "FunctionPrototypeRedefinition"; break;
+        }
+        cerr << ". Msg: " << e.what() << "\n";
+        return 3;
     } 
     catch (const exception &ex) 
     {
