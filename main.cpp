@@ -1,5 +1,6 @@
 #include "regex.cpp"
-#include "scopeAnalysis.cpp"
+#include "typeChecker.cpp"
+
 
 int main()
 {
@@ -7,6 +8,7 @@ int main()
     vector<Token> ts = LexerAlgo(file);
     Program prog = ParserAlgo(ts);
     ScopeAnalysis(prog);
+    typeChecker(prog);
     
     return 0;
 }
