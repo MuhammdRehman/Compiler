@@ -1,12 +1,12 @@
 #include "regex.cpp"
-#include "parser.cpp"
+#include "scopeAnalysis.cpp"
 
 int main()
 {
     string file = "TestFile.txt";
     vector<Token> ts = LexerAlgo(file);
-    ParserAlgo(ts);
+    Program prog = ParserAlgo(ts);
+    ScopeAnalysis(prog);
     
-
     return 0;
 }
