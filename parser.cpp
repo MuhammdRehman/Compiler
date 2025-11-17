@@ -33,21 +33,7 @@ struct ParseException : public runtime_error {
         : runtime_error(msg), err(e), token(t) {}
 };
 
-/* -------------------------
-   ScopeError As defined in assignment
-   ------------------------- */
-enum class ScopeError {
-    UndeclaredVariableAccessed,
-    UndefinedFunctionCalled,
-    VariableRedefinition,
-    FunctionPrototypeRedefinition,
-};
 
-struct ScopeException : public runtime_error {
-    ScopeError err;
-    string msg;
-    ScopeException(ScopeError e, string m) : runtime_error(m), err(e), msg(m) {}
-};
 
 struct ASTNode {
     virtual ~ASTNode() = default;

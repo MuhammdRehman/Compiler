@@ -7,6 +7,7 @@ int my_fn(int x, float y) {
 int main(){
     float a = 0;
     int b=9;
-    int c = my_fn(a,b);
+    float a = 10;
+    int c = my_fnn(a);
     return 0;
 }   
