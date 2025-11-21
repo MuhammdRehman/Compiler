@@ -141,11 +141,12 @@ public:
     }
 };
 
-void ScopeAnalysis(const Program& prog) {
+bool ScopeAnalysis(const Program& prog) {
     try {
         ScopeAnalyzer analyzer;
         analyzer.analyze(prog);
         cout << "Scope analysis passed: no errors detected.\n";
+        return true;
     } catch (const ScopeException& e) {
         cerr << "Scope error: ";
         switch (e.err) {
@@ -159,4 +160,5 @@ void ScopeAnalysis(const Program& prog) {
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << "\n";
     }
+    return false;
 }

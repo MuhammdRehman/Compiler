@@ -7,8 +7,15 @@ int main()
     string file = "TestFile.txt";
     vector<Token> ts = LexerAlgo(file);
     Program prog = ParserAlgo(ts);
-    ScopeAnalysis(prog);
-    typeChecker(prog);
+    if(prog.funcs.empty()){
+        return -1;
+    }
+    if(!ScopeAnalysis(prog)){
+        return -1;
+    }
+    if(!typeChecker(prog)){
+        return -1;
+    }
     IRModule mod = generateIR(prog);
     mod.print();
     return 0;

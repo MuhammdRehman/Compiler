@@ -387,14 +387,16 @@ public:
     }
 };
 
-void typeChecker(Program prog) {
+bool typeChecker(Program prog) {
     try {
         TypeChecker checker;
         checker.analyze(prog);
         cout << "Type checking passed, no errors found.\n";
+        return true;
     } catch (const TypeException &ex) {
         cerr << "Type error: " << ex.what() << "\n";
     } catch (const exception &ex) {
         cerr << "Error: " << ex.what() << "\n";
     }
+    return false;
 }
