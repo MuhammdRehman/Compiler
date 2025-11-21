@@ -8,7 +8,7 @@ int main()
     vector<Token> ts = LexerAlgo(file);
     Program prog = ParserAlgo(ts);
     ScopeAnalysis(prog);
-    //typeChecker(prog);
+    typeChecker(prog);
     
     return 0;
 }

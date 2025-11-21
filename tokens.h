@@ -63,7 +63,8 @@ T_QUOTE,
 // others lefty
 T_COMMENT,
 T_UNKNOWN,
-T_EOF
+T_EOF,
+T_BREAK
 
 
 };
@@ -122,6 +123,7 @@ string fromTokenTypeToStringGo(TokenType type)
         case TokenType::T_LSHIFT: return "T_LSHIFT";
         case TokenType::T_RSHIFT: return "T_RSHIFT";
 
+        case TokenType::T_BREAK: return "T_BREAK";
         case TokenType::T_PARENL: return "T_PARENL";
         case TokenType::T_PARENR: return "T_PARENR";
         case TokenType::T_BRACEL: return "T_BRACEL";

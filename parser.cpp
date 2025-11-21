@@ -167,6 +167,62 @@ struct BlockStmt : public Stmt {
     }
 };
 
+/* -------------------------
+   Additional Statements for Control Flow
+   ------------------------- */
+struct BreakStmt : public Stmt {
+    BreakStmt() {}
+    void print(int indent=0) const override {
+        pad(indent); cout << "Break:\n";
+    }
+};
+
+struct IfStmt : public Stmt {
+    ExprPtr cond;
+    StmtPtr thenBody;
+    StmtPtr elseBody; // may be null
+    IfStmt(ExprPtr c, StmtPtr t, StmtPtr e = nullptr)
+        : cond(move(c)), thenBody(move(t)), elseBody(move(e)) {}
+    void print(int indent=0) const override {
+        pad(indent); cout << "IfStmt:\n";
+        pad(indent+2); cout << "Condition:\n"; cond->print(indent+4);
+        pad(indent+2); cout << "Then:\n"; thenBody->print(indent+4);
+        if (elseBody) {
+            pad(indent+2); cout << "Else:\n"; elseBody->print(indent+4);
+        }
+    }
+};
+
+struct WhileStmt : public Stmt {
+    ExprPtr cond;
+    StmtPtr body;
+    WhileStmt(ExprPtr c, StmtPtr b) : cond(move(c)), body(move(b)) {}
+    void print(int indent=0) const override {
+        pad(indent); cout << "WhileStmt:\n";
+        pad(indent+2); cout << "Condition:\n"; cond->print(indent+4);
+        pad(indent+2); cout << "Body:\n"; body->print(indent+4);
+    }
+};
+
+struct ForStmt : public Stmt {
+    StmtPtr init;
+    ExprPtr condition;
+    StmtPtr update;
+    StmtPtr body;
+
+    ForStmt(StmtPtr i, ExprPtr c, StmtPtr u, StmtPtr b)
+        : init(move(i)), condition(move(c)), update(move(u)), body(move(b)) {}
+
+    void print(int indent=0) const override {
+        pad(indent); cout << "ForStmt:\n";
+        pad(indent+2); cout << "Init:\n";
+        pad(indent+2); cout << "Condition:\n";
+        pad(indent+2); cout << "Update:\n";
+        pad(indent+2); cout << "Body:\n";
+        body->print(indent+4);
+    }
+};
+
 /* Function / Program */
 struct Param {
     string typeName;
@@ -377,14 +433,80 @@ public:
         
         return make_shared<BlockStmt>(move(stmts));
     }
-
     StmtPtr parseStatement() 
     {
         if (isTypeToken(getter_now())) return parse_variable_dec();
         if (check(TokenType::T_RETURN)) return parse_return_dec();
         if (check(TokenType::T_BRACEL)) return parse_block_dec();
-        
-        if (check(TokenType::T_IDENTIFIER)) 
+
+        if (check(TokenType::T_IF)) {
+            next_get(); // consume 'if'
+            take_func(TokenType::T_PARENL, ParseError::FailedToFindToken, "expected '(' after if");
+            ExprPtr cond = parseExpression();
+            take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after if condition");
+            StmtPtr thenBody = parseStatement();
+            StmtPtr elseBody = nullptr;
+            if (check(TokenType::T_ELSE)) {
+                next_get();
+                elseBody = parseStatement();
+            }
+            return make_shared<IfStmt>(cond, thenBody, elseBody);
+        }
+        if (check(TokenType::T_BREAK)) {
+            next_get(); // consume 'break'
+            take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "Semicolon is Expected Here");
+            return make_shared<BreakStmt>();
+        }
+
+
+        if (check(TokenType::T_WHILE)) {
+            next_get(); // consume 'while'
+            take_func(TokenType::T_PARENL, ParseError::FailedToFindToken, "expected '(' after while");
+            ExprPtr cond = parseExpression();
+            take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after while condition");
+            StmtPtr body = parseStatement();
+            return make_shared<WhileStmt>(cond, body);
+        }
+    if (check(TokenType::T_FOR)) {
+        next_get(); // consume 'for'
+        take_func(TokenType::T_PARENL, ParseError::FailedToFindToken, "expected '(' after for");
+
+        // --- parse initializer ---
+        StmtPtr init = nullptr;
+        if (!check(TokenType::T_SEMICOLON)) {
+            if (isTypeToken(getter_now())) {
+                init = parse_variable_dec();
+            } else {
+                init = parseExpressionStatement(); // expression stmt
+                take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after for initializer");
+            }
+        } else {
+            next_get(); // skip ';'
+        }
+
+        // --- parse condition ---
+        ExprPtr cond = nullptr;
+        if (!check(TokenType::T_SEMICOLON)) {
+            cond = parseExpression();
+        }
+        take_func(TokenType::T_SEMICOLON, ParseError::FailedToFindToken, "expected ';' after for condition");
+
+        // --- parse update ---
+        StmtPtr update = nullptr;
+        if (!check(TokenType::T_PARENR)) {
+            StmtPtr updateExpr = parseAssign(); // just parse expression (can include assignment)
+            update = updateExpr;
+        }
+
+        take_func(TokenType::T_PARENR, ParseError::FailedToFindToken, "expected ')' after for update");
+
+        // --- parse body ---
+        StmtPtr body = parseStatement();
+
+        return make_shared<ForStmt>(init, cond, update, body);
+    }       
+    
+    if (check(TokenType::T_IDENTIFIER)) 
         {
             if (pos + 1 < tokens.size() && tokens[pos+1].type == TokenType::T_ASSIGN) 
             {
@@ -397,7 +519,14 @@ public:
                 return make_shared<ExprStmt>(e);
             }
         }
+
         throw ParseException(ParseError::UnexpectedToken, getter_now(), "unexpected token at start of statement");
+    }
+
+    // Helper: wrap expression as statement
+    StmtPtr parseExpressionStatement() {
+        ExprPtr e = parseExpression();
+        return make_shared<ExprStmt>(e);
     }
 
     StmtPtr parse_variable_dec() 

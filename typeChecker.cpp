@@ -9,7 +9,6 @@
 
 using namespace std;
 
-
 enum class TypeChkError {
     ErroneousVarDecl,
     FnCallParamCount,
@@ -28,14 +27,12 @@ enum class TypeChkError {
     ReturnStmtNotFound
 };
 
-
 class TypeException : public runtime_error {
 public:
     TypeChkError err;
     TypeException(TypeChkError e, const string &msg)
         : runtime_error(msg), err(e) {}
 };
-
 
 static TokenType typeNameStringToTokenType(const string &s) {
     if (s == "int")    return TokenType::T_INT;
@@ -55,21 +52,18 @@ static string tokenTypeToBasicName(TokenType t) {
     }
 }
 
-
 static bool opEquals(const string &opStr, TokenType tt) {
-    return opStr == fromTokenTypeToStringGo(tt);
+    string tokName = fromTokenTypeToStringGo(tt);
+    return opStr == tokName;
 }
-
 
 class TypeChecker {
     map<string, FunctionDecl*> functions;
-
     vector< map<string, TokenType> > scopeStack;
-
     TokenType currentFuncReturn;
 
     TokenType getVarType(const string &name) {
-        for (int i = (int)scopeStack.size() - 1; i >= 0; --i) {
+        for (int i = (int) scopeStack.size() - 1; i >= 0; --i) {
             if (scopeStack[i].count(name)) {
                 return scopeStack[i][name];
             }
@@ -78,64 +72,57 @@ class TypeChecker {
                             "Undeclared variable accessed: " + name);
     }
 
-   
     void defineVar(const string &name, TokenType t) {
-        if (scopeStack.empty())
-            scopeStack.push_back(map<string, TokenType>());
+        if (scopeStack.empty()) {
+            map<string, TokenType> newScope;
+            scopeStack.push_back(newScope);
+        }
         scopeStack.back()[name] = t;
     }
 
-   
     TokenType analyzeExpr(const ExprPtr &expr) {
-        if (!expr) {
-            throw TypeException(TypeChkError::EmptyExpression, "Null expression");
-        }
+        if (!expr) throw TypeException(TypeChkError::EmptyExpression, "Null expression");
 
-        // Identifier
-        if (auto *id = dynamic_cast<IdentifierExpr*>(expr.get()))
-            return getVarType(id->name);
+        IdentifierExpr* idNode = dynamic_cast<IdentifierExpr*>(expr.get());
+        if (idNode != nullptr) return getVarType(idNode->name);
 
-        // Literals
-        if (dynamic_cast<IntLiteral*>(expr.get()))    return TokenType::T_INT;
-        if (dynamic_cast<FloatLiteral*>(expr.get()))  return TokenType::T_FLOAT;
-        if (dynamic_cast<StringLiteral*>(expr.get())) return TokenType::T_STRING;
-        if (dynamic_cast<BoolLiteral*>(expr.get()))   return TokenType::T_BOOL;
+        IntLiteral* intLit = dynamic_cast<IntLiteral*>(expr.get());
+        if (intLit != nullptr) return TokenType::T_INT;
 
-        /*
-           ----------------------------------
-           Binary Expression Types
-           ----------------------------------
-        */
-        if (auto *be = dynamic_cast<BinaryExpr*>(expr.get())) {
-            TokenType leftT = analyzeExpr(be->left);
-            TokenType rightT = analyzeExpr(be->right);
-            string op = be->op;
+        FloatLiteral* floatLit = dynamic_cast<FloatLiteral*>(expr.get());
+        if (floatLit != nullptr) return TokenType::T_FLOAT;
 
-            // Arithmetic operators
+        StringLiteral* stringLit = dynamic_cast<StringLiteral*>(expr.get());
+        if (stringLit != nullptr) return TokenType::T_STRING;
+
+        BoolLiteral* boolLit = dynamic_cast<BoolLiteral*>(expr.get());
+        if (boolLit != nullptr) return TokenType::T_BOOL;
+
+        BinaryExpr* bin = dynamic_cast<BinaryExpr*>(expr.get());
+        if (bin != nullptr) {
+            TokenType leftT = analyzeExpr(bin->left);
+            TokenType rightT = analyzeExpr(bin->right);
+            string op = bin->op;
+
             if (opEquals(op, TokenType::T_PLUS) ||
                 opEquals(op, TokenType::T_MINUS) ||
                 opEquals(op, TokenType::T_MULT) ||
                 opEquals(op, TokenType::T_DIV) ||
-                opEquals(op, TokenType::T_MOD))
-            {
-                // String concatenation
+                opEquals(op, TokenType::T_MOD)) {
+
                 if (opEquals(op, TokenType::T_PLUS) &&
                     leftT == TokenType::T_STRING &&
-                    rightT == TokenType::T_STRING)
-                    return TokenType::T_STRING;
+                    rightT == TokenType::T_STRING) return TokenType::T_STRING;
 
-                bool leftNum  = (leftT == TokenType::T_INT || leftT == TokenType::T_FLOAT);
-                bool rightNum = (rightT == TokenType::T_INT || rightT == TokenType::T_FLOAT);
-                if (!leftNum || !rightNum)
+                if ((leftT != TokenType::T_INT && leftT != TokenType::T_FLOAT) ||
+                    (rightT != TokenType::T_INT && rightT != TokenType::T_FLOAT)) {
                     throw TypeException(TypeChkError::AttemptedAddOpOnNonNumeric,
                         "Arithmetic operator used on non-numeric types");
+                }
 
-                return (leftT == TokenType::T_FLOAT || rightT == TokenType::T_FLOAT)
-                       ? TokenType::T_FLOAT
-                       : TokenType::T_INT;
+                return (leftT == TokenType::T_FLOAT || rightT == TokenType::T_FLOAT) ? TokenType::T_FLOAT : TokenType::T_INT;
             }
 
-            // Comparison operators
             if (opEquals(op, TokenType::T_EQUALSOP) ||
                 opEquals(op, TokenType::T_NOTEQUAL) ||
                 opEquals(op, TokenType::T_LESS) ||
@@ -143,199 +130,167 @@ class TypeChecker {
                 opEquals(op, TokenType::T_GREATER) ||
                 opEquals(op, TokenType::T_GREATEREQ)) {
 
-                if (leftT == rightT) return TokenType::T_BOOL;
-
-                bool leftNum  = (leftT == TokenType::T_INT || leftT == TokenType::T_FLOAT);
-                bool rightNum = (rightT == TokenType::T_INT || rightT == TokenType::T_FLOAT);
-
-                if (leftNum && rightNum) return TokenType::T_BOOL;
-
-                throw TypeException(TypeChkError::ExpressionTypeMismatch,
-                                    "Comparison between incompatible types");
-            }
-
-            // Boolean ops
-            if (opEquals(op, TokenType::T_AND) || opEquals(op, TokenType::T_OR)) {
-                if (leftT != TokenType::T_BOOL || rightT != TokenType::T_BOOL)
-                    throw TypeException(TypeChkError::AttemptedBoolOpOnNonBools,
-                        "Boolean operator used on non-boolean operands");
+                if (leftT != rightT) throw TypeException(TypeChkError::ExpressionTypeMismatch,
+                    "Comparison between incompatible types");
                 return TokenType::T_BOOL;
             }
 
-            // Bitwise ops
+            if (opEquals(op, TokenType::T_AND) || opEquals(op, TokenType::T_OR)) {
+                if (leftT != TokenType::T_BOOL || rightT != TokenType::T_BOOL) {
+                    throw TypeException(TypeChkError::AttemptedBoolOpOnNonBools,
+                        "Boolean operator used on non-boolean operands");
+                }
+                return TokenType::T_BOOL;
+            }
+
             if (opEquals(op, TokenType::T_BITAND) ||
                 opEquals(op, TokenType::T_BITOR) ||
                 opEquals(op, TokenType::T_BITXOR)) {
-                if (leftT != TokenType::T_INT || rightT != TokenType::T_INT)
+                if (leftT != TokenType::T_INT || rightT != TokenType::T_INT) {
                     throw TypeException(TypeChkError::AttemptedBitOpOnNonNumeric,
                         "Bitwise operator used on non-integer types");
+                }
                 return TokenType::T_INT;
             }
 
-            // Shift ops
             if (opEquals(op, TokenType::T_LSHIFT) || opEquals(op, TokenType::T_RSHIFT)) {
-                if (leftT != TokenType::T_INT || rightT != TokenType::T_INT)
+                if (leftT != TokenType::T_INT || rightT != TokenType::T_INT) {
                     throw TypeException(TypeChkError::AttemptedShiftOnNonInt,
                         "Shift operator used on non-integer types");
+                }
                 return TokenType::T_INT;
             }
 
             throw TypeException(TypeChkError::ExpressionTypeMismatch,
-                                "Unknown binary operation: " + op);
+                                string("Unknown binary operation: ") + op);
         }
 
-        if (auto *ce = dynamic_cast<CallExpr*>(expr.get())) {
-
-            auto *calleeId = dynamic_cast<IdentifierExpr*>(ce->callee.get());
-            if (!calleeId)
-                throw TypeException(TypeChkError::ErroneousVarDecl,
-                                    "Function call target is not an identifier");
+        CallExpr* call = dynamic_cast<CallExpr*>(expr.get());
+        if (call != nullptr) {
+            IdentifierExpr* calleeId = dynamic_cast<IdentifierExpr*>(call->callee.get());
+            if (calleeId == nullptr) throw TypeException(TypeChkError::ErroneousVarDecl,
+                                                        "Function call callee is not an identifier");
 
             string fname = calleeId->name;
-            if (!functions.count(fname))
-                throw TypeException(TypeChkError::ErroneousVarDecl,
-                                    "Undefined function called: " + fname);
+            if (functions.count(fname) == 0) throw TypeException(TypeChkError::ErroneousVarDecl,
+                                                                "Undefined function called: " + fname);
 
-            FunctionDecl *fn = functions[fname];
-
-            if (ce->args.size() != fn->params.size())
+            FunctionDecl* fdecl = functions[fname];
+            if ((int)call->args.size() != (int)fdecl->params.size()) {
                 throw TypeException(TypeChkError::FnCallParamCount,
-                    "Function '" + fname + "' expects " +
-                    to_string(fn->params.size()) + " arguments");
-
-            for (size_t i = 0; i < ce->args.size(); ++i) {
-                TokenType argT   = analyzeExpr(ce->args[i]);
-                TokenType paramT = typeNameStringToTokenType(fn->params[i].typeName);
-
-                if (paramT == TokenType::T_FLOAT && argT == TokenType::T_INT)
-                    continue;
-
-                if (argT != paramT)
-                    throw TypeException(TypeChkError::FnCallParamType,
-                                        "Parameter type mismatch in call to " + fname);
+                    "Function '" + fname + "' expects " + to_string(fdecl->params.size()) +
+                    " arguments, got " + to_string(call->args.size()));
             }
 
-            return typeNameStringToTokenType(fn->returnType);
+            for (int i = 0; i < (int)call->args.size(); ++i) {
+                TokenType argType = analyzeExpr(call->args[i]);
+                TokenType paramType = typeNameStringToTokenType(fdecl->params[i].typeName);
+                if (argType != paramType) {
+                    throw TypeException(TypeChkError::FnCallParamType,
+                        "Parameter type mismatch in call to " + fname);
+                }
+            }
+
+            return typeNameStringToTokenType(fdecl->returnType);
         }
 
-        throw TypeException(TypeChkError::EmptyExpression, "Unsupported expression type");
+        throw TypeException(TypeChkError::EmptyExpression, "Unsupported expression node");
     }
-
 
     void analyzeStmt(const StmtPtr &stmt, TokenType expectedReturnType) {
         if (!stmt) return;
 
-        // Compound block (new scope)
-        if (auto *bs = dynamic_cast<BlockStmt*>(stmt.get())) {
-            scopeStack.push_back({});
-            for (auto &s : bs->stmts)
-                analyzeStmt(s, expectedReturnType);
+        BlockStmt* blockNode = dynamic_cast<BlockStmt*>(stmt.get());
+        if (blockNode != nullptr) {
+            map<string, TokenType> newScope;
+            scopeStack.push_back(newScope);
+            for (int i = 0; i < (int)blockNode->stmts.size(); ++i) {
+                analyzeStmt(blockNode->stmts[i], expectedReturnType);
+            }
             scopeStack.pop_back();
             return;
         }
 
-        // Variable Declaration
-        if (auto *vd = dynamic_cast<VarDeclStmt*>(stmt.get())) {
-            TokenType declared = typeNameStringToTokenType(vd->typeName);
-            if (declared == TokenType::T_UNKNOWN)
+        VarDeclStmt* varDecl = dynamic_cast<VarDeclStmt*>(stmt.get());
+        if (varDecl != nullptr) {
+            TokenType declaredT = typeNameStringToTokenType(varDecl->typeName);
+            TokenType initT = analyzeExpr(varDecl->init);
+            if (initT != declaredT) {
                 throw TypeException(TypeChkError::ErroneousVarDecl,
-                                    "Unknown type for variable " + vd->ident);
-
-            TokenType initT = analyzeExpr(vd->init);
-
-            if (!(declared == TokenType::T_FLOAT && initT == TokenType::T_INT) &&
-                initT != declared)
-            {
-                throw TypeException(TypeChkError::ErroneousVarDecl,
-                                    "Initializer type mismatch for " + vd->ident);
+                                    "Initializer type mismatch for " + varDecl->ident);
             }
-
-            defineVar(vd->ident, declared);
+            defineVar(varDecl->ident, declaredT);
             return;
         }
 
-        // Assignment
-        if (auto *asg = dynamic_cast<AssignStmt*>(stmt.get())) {
-            TokenType varT = getVarType(asg->ident);
-            TokenType valT = analyzeExpr(asg->value);
-
-            if (!(varT == TokenType::T_FLOAT && valT == TokenType::T_INT) &&
-                varT != valT)
+        AssignStmt* assignNode = dynamic_cast<AssignStmt*>(stmt.get());
+        if (assignNode != nullptr) {
+            TokenType varT = getVarType(assignNode->ident);
+            TokenType valT = analyzeExpr(assignNode->value);
+            if (varT != valT) {
                 throw TypeException(TypeChkError::ExpressionTypeMismatch,
-                                    "Assignment type mismatch for " + asg->ident);
-
+                                    "Assignment type mismatch for " + assignNode->ident);
+            }
             return;
         }
 
-        // Return statement
-        if (auto *ret = dynamic_cast<ReturnStmt*>(stmt.get())) {
-            if (ret->value) {
-                TokenType rT = analyzeExpr(ret->value);
-
-                if (!(expectedReturnType == TokenType::T_FLOAT && rT == TokenType::T_INT) &&
-                    rT != expectedReturnType)
-                {
-                    throw TypeException(TypeChkError::ErroneousReturnType,
-                                        "Return type mismatch");
+        ReturnStmt* returnNode = dynamic_cast<ReturnStmt*>(stmt.get());
+        if (returnNode != nullptr) {
+            if (returnNode->value != nullptr) {
+                TokenType retT = analyzeExpr(returnNode->value);
+                if (retT != expectedReturnType) {
+                    throw TypeException(TypeChkError::ErroneousReturnType, "Return type mismatch");
                 }
             }
             return;
         }
 
-        // Standalone expression
-        if (auto *es = dynamic_cast<ExprStmt*>(stmt.get())) {
-            analyzeExpr(es->expr);
+        ExprStmt* exprStmt = dynamic_cast<ExprStmt*>(stmt.get());
+        if (exprStmt != nullptr) {
+            analyzeExpr(exprStmt->expr);
             return;
         }
     }
 
 public:
-
-   
     void analyze(Program &prog) {
-
-        // collect functions
-        for (auto &fn : prog.funcs) {
-            if (functions.count(fn->name))
-                throw TypeException(TypeChkError::ErroneousVarDecl,
-                                    "Function redefinition: " + fn->name);
-            functions[fn->name] = fn.get();
+        for (int i = 0; i < (int)prog.funcs.size(); ++i) {
+            FunctionDecl* f = prog.funcs[i].get();
+            if (functions.count(f->name)) throw TypeException(TypeChkError::ErroneousVarDecl, "Function redefinition: " + f->name);
+            functions[f->name] = f;
         }
 
-        // analyze each function independently
-        for (auto &fnPtr : prog.funcs) {
-            FunctionDecl *fn = fnPtr.get();
-
+        for (int i = 0; i < (int)prog.funcs.size(); ++i) {
+            FunctionDecl* f = prog.funcs[i].get();
             scopeStack.clear();
-            scopeStack.push_back({});
+            map<string, TokenType> topScope;
+            scopeStack.push_back(topScope);
 
-            // load parameters
-            for (auto &p : fn->params) {
-                TokenType pt = typeNameStringToTokenType(p.typeName);
-                scopeStack.back()[p.ident] = pt;
+            for (int p = 0; p < (int)f->params.size(); ++p) {
+                TokenType paramT = typeNameStringToTokenType(f->params[p].typeName);
+                scopeStack.back()[f->params[p].ident] = paramT;
             }
 
-            TokenType expectedRet = typeNameStringToTokenType(fn->returnType);
-            currentFuncReturn = expectedRet;
+            TokenType expectedReturn = typeNameStringToTokenType(f->returnType);
+            currentFuncReturn = expectedReturn;
 
-            analyzeStmt(fn->body, expectedRet);
+            analyzeStmt(f->body, expectedReturn);
 
             bool foundReturn = false;
-            for (auto &s : fn->body->stmts) {
-                if (dynamic_cast<ReturnStmt*>(s.get())) {
+            for (int s = 0; s < (int)f->body->stmts.size(); ++s) {
+                ReturnStmt* r = dynamic_cast<ReturnStmt*>(f->body->stmts[s].get());
+                if (r != nullptr) {
                     foundReturn = true;
                     break;
                 }
             }
-
-            if (!foundReturn && expectedRet != TokenType::T_UNKNOWN) {
+            if (!foundReturn && expectedReturn != TokenType::T_UNKNOWN) {
                 throw TypeException(TypeChkError::ReturnStmtNotFound,
-                                    "Function '" + fn->name + "' missing return statement");
+                                    "Function '" + f->name + "' missing return statement");
             }
         }
     }
 };
-
 
 void typeChecker(Program prog) {
     try {
