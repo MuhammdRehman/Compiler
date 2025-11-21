@@ -53,6 +53,10 @@ TokenType fromKeyToTokenGo(const string& word)
     {
         return TokenType::T_BOOLLIT;
     }
+    if(word == "break")
+    {
+        return TokenType::T_BREAK;
+    }
     return TokenType::T_IDENTIFIER;
 }
 

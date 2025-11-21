@@ -1,5 +1,5 @@
 #include "regex.cpp"
-#include "typeChecker.cpp"
+#include "IR_Generation.cpp"
 
 
 int main()
@@ -9,6 +9,7 @@ int main()
     Program prog = ParserAlgo(ts);
     ScopeAnalysis(prog);
     typeChecker(prog);
-    
+    IRModule mod = generateIR(prog);
+    mod.print();
     return 0;
 }

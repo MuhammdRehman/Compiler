@@ -80,6 +80,10 @@ class TypeChecker {
         scopeStack.back()[name] = t;
     }
 
+    bool isNumericType(TokenType t) {
+        return t == TokenType::T_INT || t == TokenType::T_FLOAT;
+    }
+
     TokenType analyzeExpr(const ExprPtr &expr) {
         if (!expr) throw TypeException(TypeChkError::EmptyExpression, "Null expression");
 
@@ -114,8 +118,7 @@ class TypeChecker {
                     leftT == TokenType::T_STRING &&
                     rightT == TokenType::T_STRING) return TokenType::T_STRING;
 
-                if ((leftT != TokenType::T_INT && leftT != TokenType::T_FLOAT) ||
-                    (rightT != TokenType::T_INT && rightT != TokenType::T_FLOAT)) {
+                if (!isNumericType(leftT) || !isNumericType(rightT)) {
                     throw TypeException(TypeChkError::AttemptedAddOpOnNonNumeric,
                         "Arithmetic operator used on non-numeric types");
                 }
@@ -124,14 +127,25 @@ class TypeChecker {
             }
 
             if (opEquals(op, TokenType::T_EQUALSOP) ||
-                opEquals(op, TokenType::T_NOTEQUAL) ||
-                opEquals(op, TokenType::T_LESS) ||
+                opEquals(op, TokenType::T_NOTEQUAL)) {
+
+                if (leftT == rightT) return TokenType::T_BOOL;
+
+                if (isNumericType(leftT) && isNumericType(rightT)) return TokenType::T_BOOL;
+
+                throw TypeException(TypeChkError::ExpressionTypeMismatch,
+                                    "Equality comparison between incompatible types");
+            }
+
+            if (opEquals(op, TokenType::T_LESS) ||
                 opEquals(op, TokenType::T_LESSEQ) ||
                 opEquals(op, TokenType::T_GREATER) ||
                 opEquals(op, TokenType::T_GREATEREQ)) {
 
-                if (leftT != rightT) throw TypeException(TypeChkError::ExpressionTypeMismatch,
-                    "Comparison between incompatible types");
+                if (!isNumericType(leftT) || !isNumericType(rightT)) {
+                    throw TypeException(TypeChkError::ExpressionTypeMismatch,
+                                        "Relational operator used on non-numeric types");
+                }
                 return TokenType::T_BOOL;
             }
 
@@ -185,10 +199,10 @@ class TypeChecker {
             for (int i = 0; i < (int)call->args.size(); ++i) {
                 TokenType argType = analyzeExpr(call->args[i]);
                 TokenType paramType = typeNameStringToTokenType(fdecl->params[i].typeName);
-                if (argType != paramType) {
-                    throw TypeException(TypeChkError::FnCallParamType,
-                        "Parameter type mismatch in call to " + fname);
-                }
+                if (argType == paramType) continue;
+                if (paramType == TokenType::T_FLOAT && argType == TokenType::T_INT) continue;
+                throw TypeException(TypeChkError::FnCallParamType,
+                    "Parameter type mismatch in call to " + fname);
             }
 
             return typeNameStringToTokenType(fdecl->returnType);
@@ -214,8 +228,16 @@ class TypeChecker {
         VarDeclStmt* varDecl = dynamic_cast<VarDeclStmt*>(stmt.get());
         if (varDecl != nullptr) {
             TokenType declaredT = typeNameStringToTokenType(varDecl->typeName);
+            if (declaredT == TokenType::T_UNKNOWN) {
+                throw TypeException(TypeChkError::ErroneousVarDecl,
+                                    "Unknown declared type for variable " + varDecl->ident);
+            }
             TokenType initT = analyzeExpr(varDecl->init);
-            if (initT != declaredT) {
+            if (initT == declaredT) {
+                // ok
+            } else if (declaredT == TokenType::T_FLOAT && initT == TokenType::T_INT) {
+                // implicit promotion allowed
+            } else {
                 throw TypeException(TypeChkError::ErroneousVarDecl,
                                     "Initializer type mismatch for " + varDecl->ident);
             }
@@ -227,7 +249,11 @@ class TypeChecker {
         if (assignNode != nullptr) {
             TokenType varT = getVarType(assignNode->ident);
             TokenType valT = analyzeExpr(assignNode->value);
-            if (varT != valT) {
+            if (varT == valT) {
+                // ok
+            } else if (varT == TokenType::T_FLOAT && valT == TokenType::T_INT) {
+                // implicit promotion allowed
+            } else {
                 throw TypeException(TypeChkError::ExpressionTypeMismatch,
                                     "Assignment type mismatch for " + assignNode->ident);
             }
@@ -238,7 +264,11 @@ class TypeChecker {
         if (returnNode != nullptr) {
             if (returnNode->value != nullptr) {
                 TokenType retT = analyzeExpr(returnNode->value);
-                if (retT != expectedReturnType) {
+                if (retT == expectedReturnType) {
+                    // ok
+                } else if (expectedReturnType == TokenType::T_FLOAT && retT == TokenType::T_INT) {
+                    // implicit promotion allowed
+                } else {
                     throw TypeException(TypeChkError::ErroneousReturnType, "Return type mismatch");
                 }
             }
@@ -250,6 +280,71 @@ class TypeChecker {
             analyzeExpr(exprStmt->expr);
             return;
         }
+
+        IfStmt* ifNode = dynamic_cast<IfStmt*>(stmt.get());
+        if (ifNode != nullptr) {
+            TokenType condT = analyzeExpr(ifNode->cond);
+            if (condT != TokenType::T_BOOL) {
+                throw TypeException(TypeChkError::NonBooleanCondStmt, "Non-boolean condition in if statement");
+            }
+            map<string, TokenType> thenScope;
+            scopeStack.push_back(thenScope);
+            analyzeStmt(ifNode->thenBody, expectedReturnType);
+            scopeStack.pop_back();
+            if (ifNode->elseBody) {
+                map<string, TokenType> elseScope;
+                scopeStack.push_back(elseScope);
+                analyzeStmt(ifNode->elseBody, expectedReturnType);
+                scopeStack.pop_back();
+            }
+            return;
+        }
+
+        WhileStmt* whileNode = dynamic_cast<WhileStmt*>(stmt.get());
+        if (whileNode != nullptr) {
+            TokenType condT = analyzeExpr(whileNode->cond);
+            if (condT != TokenType::T_BOOL) {
+                throw TypeException(TypeChkError::NonBooleanCondStmt, "Non-boolean condition in while statement");
+            }
+            map<string, TokenType> whileScope;
+            scopeStack.push_back(whileScope);
+            analyzeStmt(whileNode->body, expectedReturnType);
+            scopeStack.pop_back();
+            return;
+        }
+
+        ForStmt* forNode = dynamic_cast<ForStmt*>(stmt.get());
+        if (forNode != nullptr) {
+            map<string, TokenType> forScope;
+            scopeStack.push_back(forScope);
+
+            if (forNode->init) {
+                VarDeclStmt* vd = dynamic_cast<VarDeclStmt*>(forNode->init.get());
+                if (vd != nullptr) {
+                    analyzeStmt(forNode->init, expectedReturnType);
+                } else {
+                    analyzeStmt(forNode->init, expectedReturnType);
+                }
+            }
+
+            if (forNode->condition) {
+                TokenType condT = analyzeExpr(forNode->condition);
+                if (condT != TokenType::T_BOOL) {
+                    throw TypeException(TypeChkError::NonBooleanCondStmt, "Non-boolean condition in for statement");
+                }
+            }
+
+            if (forNode->update) {
+                analyzeStmt(forNode->update, expectedReturnType);
+            }
+
+            analyzeStmt(forNode->body, expectedReturnType);
+
+            scopeStack.pop_back();
+            return;
+        }
+
+        return;
     }
 
 public:

@@ -14,6 +14,7 @@ vector<pair<TokenType, regex>> tokenPatterns = {
     {TokenType::T_FUNCTION, regex("^fn\\b")},
     {TokenType::T_INT, regex("^int\\b")},
     {TokenType::T_FLOAT, regex("^float\\b")},
+    {TokenType::T_BREAK,regex("^break\\b")},
     {TokenType::T_STRING, regex("^string\\b")},
     {TokenType::T_BOOL, regex("^bool\\b")},
     {TokenType::T_RETURN, regex("^return\\b")},
