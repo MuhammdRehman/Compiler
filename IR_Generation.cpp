@@ -34,6 +34,7 @@ struct Instruction {
     string left;
     string right;
     string extra;
+    vector<string> params; // For storing function parameters
 
     Instruction(Opcode o = Opcode::ASSIGN)
         : op(o), dst(""), left(""), right(""), extra("") {}
@@ -84,6 +85,28 @@ class IRGenerator {
     map<string,string> currentFunctionLocals;
     vector<string> breakTargets;
 
+    string convertOperator(const string& tokenOp) {
+        if (tokenOp == "T_PLUS") return "+";
+        if (tokenOp == "T_MINUS") return "-";
+        if (tokenOp == "T_MULT") return "*";
+        if (tokenOp == "T_DIV") return "/";
+        if (tokenOp == "T_MOD") return "%";
+        if (tokenOp == "T_EQUALSOP") return "==";
+        if (tokenOp == "T_NOTEQUAL") return "!=";
+        if (tokenOp == "T_LESS") return "<";
+        if (tokenOp == "T_LESSEQ") return "<=";
+        if (tokenOp == "T_GREATER") return ">";
+        if (tokenOp == "T_GREATEREQ") return ">=";
+        if (tokenOp == "T_AND") return "&&";
+        if (tokenOp == "T_OR") return "||";
+        if (tokenOp == "T_BITAND") return "&";
+        if (tokenOp == "T_BITOR") return "|";
+        if (tokenOp == "T_BITXOR") return "^";
+        if (tokenOp == "T_LSHIFT") return "<<";
+        if (tokenOp == "T_RSHIFT") return ">>";
+        return tokenOp; // Return as-is if not recognized
+    }
+
 public:
     IRGenerator() : tempCounter(0), labelCounter(0) {}
 
@@ -110,6 +133,10 @@ private:
         Instruction ib;
         ib.op = Opcode::FUNC_BEGIN;
         ib.extra = f->name;
+        // Store parameters in instruction
+        for (int p = 0; p < (int)f->params.size(); ++p) {
+            ib.params.push_back(f->params[p].ident);
+        }
         module.push(ib);
 
         currentFunctionLocals.clear();
@@ -335,6 +362,7 @@ private:
             return;
         }
 
+        // break ok
         BreakStmt* br = dynamic_cast<BreakStmt*>(s.get());
         if (br != NULL) {
             if ((int)breakTargets.size() == 0) {
@@ -364,7 +392,10 @@ private:
         if (fl != NULL) return fl->val;
 
         StringLiteral* sl = dynamic_cast<StringLiteral*>(e.get());
-        if (sl != NULL) return string("\"") + sl->val + string("\"");
+        if (sl != NULL) {
+            // sl->val already contains quotes, return as-is
+            return sl->val;
+        }
 
         BoolLiteral* bl = dynamic_cast<BoolLiteral*>(e.get());
         if (bl != NULL) return bl->val;
@@ -379,7 +410,7 @@ private:
             i.dst = temp;
             i.left = leftOp;
             i.right = rightOp;
-            i.extra = be->op;
+            i.extra = convertOperator(be->op);
             module.push(i);
             return temp;
         }
